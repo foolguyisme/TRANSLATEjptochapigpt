@@ -1,74 +1,38 @@
 import openai
-import speech_recognition as sr
-from pydub import AudioSegment
 import os
-import imageio_ffmpeg as ffmpeg
 import time
 
-# FFmpeg路徑
-ffmpeg_exe = ffmpeg.get_ffmpeg_exe()
-print(f"FFmpeg executable path: {ffmpeg_exe}")
-
-# 設置FFmpeg的路徑
-AudioSegment.converter = ffmpeg_exe
-
-# OpenAI API
-openai.api_key = 'XXX'
+#OpenAI API金鑰
+openai.api_key = "XXX"
 
 def convert_audio_to_text(audio_file):
-    recognizer = sr.Recognizer()
-    
-    with sr.AudioFile(audio_file) as source:
-        audio = recognizer.record(source)
+    with open(audio_file, "rb") as audio:
         try:
-            text = recognizer.recognize_google(audio, language="ja-JP")
-            print(f"Recognized Text: {text}")
-            return text
-        except sr.UnknownValueError:
-            print("Google Speech Recognition 無法理解音頻")
-        except sr.RequestError as e:
-            print(f"無法請求結果; {e}")
-
-    return None
-
-def translate_text(text, target_language="zh"):
-    if text:
-        prompt = f"Translate the following Japanese text to Chinese: {text}"
-
-        try:
-            # 使用的gpt模型
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=100
-            )
-            translated_text = response['choices'][0]['message']['content'].strip()
-            print(f"Translated Text: {translated_text}")
-            return translated_text
-        
-        except openai.error.RateLimitError:
-            print("API額度")
+            response = openai.Audio.transcribe("whisper-1", audio, language="ja")  # 使用Whisper模型進行語音識別，指定語言為日文(你也能換其他的)
+            print(f"Transcribed Text: {response['text']}")
+            return response['text']
+        except openai.error.OpenAIError as e:
+            print(f"API請求失敗: {e}")
             return None
-    else:
-        print("無法翻譯")
-        return None
 
-def save_as_srt(translated_text_list, filename="output.srt"):
+def save_as_srt(transcribed_text, filename="output.srt"):
     srt_content = []
-    for i, translated_text in enumerate(translated_text_list):
-        start_time = i * 5
-        end_time = (i + 1) * 5
+    lines = transcribed_text.split('。')  #假設每句話結尾
+
+    for i, line in enumerate(lines):
+        #計算文本時間(每段)這邊假設3秒
+        start_time = i * 3
+        end_time = (i + 1) * 3
+
         start_time_str = f"00:00:{start_time:02},000"
         end_time_str = f"00:00:{end_time:02},000"
 
         srt_content.append(f"{i + 1}")
         srt_content.append(f"{start_time_str} --> {end_time_str}")
-        srt_content.append(translated_text)
-        srt_content.append("")
+        srt_content.append(line.strip())
+        srt_content.append("")  # 空行
 
-    # 將內容寫入SRT
+    #將內容寫入SRT
     if srt_content:
         with open(filename, 'w', encoding='utf-8') as f:
             f.write("\n".join(srt_content))
@@ -76,24 +40,50 @@ def save_as_srt(translated_text_list, filename="output.srt"):
     else:
         print("沒有內容可保存到 SRT 文件。")
 
+def translate_srt_to_chinese(input_srt, output_srt):
+    translated_srt_content = []
+
+    with open(input_srt, 'r', encoding='utf-8') as file:
+        srt_content = file.readlines()
+
+    for line in srt_content:
+        #忽略空行與時間
+        if "-->" not in line and not line.strip().isdigit():
+            line_to_translate = line.strip()
+
+            #使用GPT模型翻譯日文到中文
+            response = openai.ChatCompletion.create(
+                # model="gpt-4",使用 gpt-4模型
+                model="gpt-3.5-turbo",  # 使用 gpt-3.5-turbo 模型
+                messages=[
+                    {"role": "system", "content": "你是一個專業的翻譯家，將日文翻譯成中文。"},
+                    {"role": "user", "content": f"將以下日文翻譯成中文：{line_to_translate}"}
+                ]
+            )
+            translated_text = response['choices'][0]['message']['content'].strip()
+            translated_srt_content.append(translated_text)
+        else:
+            translated_srt_content.append(line.strip())
+
+    #將翻譯內容寫入SRT
+    with open(output_srt, 'w', encoding='utf-8') as file:
+        file.write("\n".join(translated_srt_content))
+
+    print(f"中文 SRT 文件已保存為 {output_srt}")
+
 if __name__ == "__main__":
-    audio_file = "C:/Users/User/Desktop/翻譯api/test.wav"  # 替換為你的音頻文件的正確路徑
+    audio_file = "C:/Users/User/Desktop/翻譯api/test.wav"  #替會為自身音頻路徑
+    transcribed_text = convert_audio_to_text(audio_file)
 
-    text = convert_audio_to_text(audio_file)
-
-    # 減少頻率雖然我不知道有沒有用
+    #減少頻率
     time.sleep(1)  # 延遲
 
-    translated_text_list = []
+    #將日文保存至SRT
+    if transcribed_text:
+        srt_filename = "C:/Users/User/Desktop/翻譯api/japanese_output.srt" 
+        save_as_srt(transcribed_text, srt_filename)
 
-    translated_text = translate_text(text, target_language="zh")
-    if translated_text:
-        translated_text_list.append(translated_text)  # 將翻譯文本添加到列表
-
-    time.sleep(1)
-
-    # 保存翻譯結果
-    save_as_srt(translated_text_list, "C:/Users/User/Desktop/翻譯api/translated_output.srt")
-
-    if os.path.exists("temp.wav"):
-        os.remove("temp.wav")
+        #翻譯SRT到中文
+        translate_srt_to_chinese(srt_filename, "C:/Users/User/Desktop/翻譯api/chinese_output.srt")
+    else: 
+        print("未識別到任何文本。")

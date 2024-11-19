@@ -17,10 +17,10 @@ def convert_audio_to_text(audio_file):
 
 def save_as_srt(transcribed_text, filename="output.srt"):
     srt_content = []
-    lines = transcribed_text.split('。')  #假設每句話結尾
+    lines = transcribed_text.split('。')  #話結尾
 
     for i, line in enumerate(lines):
-        #計算文本時間(每段)這邊假設3秒
+        #計算文本時間(每段)
         start_time = i * 3
         end_time = (i + 1) * 3
 
@@ -30,7 +30,7 @@ def save_as_srt(transcribed_text, filename="output.srt"):
         srt_content.append(f"{i + 1}")
         srt_content.append(f"{start_time_str} --> {end_time_str}")
         srt_content.append(line.strip())
-        srt_content.append("")  # 空行
+        srt_content.append("") 
 
     #將內容寫入SRT
     if srt_content:
@@ -47,7 +47,7 @@ def translate_srt_to_chinese(input_srt, output_srt):
         srt_content = file.readlines()
 
     for line in srt_content:
-        #忽略空行與時間
+        #忽略空行&時間
         if "-->" not in line and not line.strip().isdigit():
             line_to_translate = line.strip()
 
